@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1550,7 +1550,7 @@ const MODULES = [
   // ── DAILY ACADEMIC ──
   { id:'attendance',    label:'Attendance',         icon:'<i class="fa-solid fa-circle-check"></i>', roles:['admin','teacher','student','parent','staff'] },
   { id:'timetable',     label:'Timetable',          icon:'<i class="fa-solid fa-calendar-days"></i>', roles:['admin','teacher','student','parent'] },
-  { id:'academics',     label:'Academics',          icon:'<i class="fa-solid fa-books"></i>', roles:['admin','teacher','student','parent'] },
+  { id:'academics',     label:'Academics',          icon:'<i class="fa-solid fa-book"></i>', roles:['admin','teacher','student','parent'] },
   { id:'exams',         label:'Exams & Results',    icon:'<i class="fa-solid fa-pen-to-square"></i>', roles:['admin','teacher','student','parent'] },
 
   // ── MONEY ──
@@ -1563,7 +1563,7 @@ const MODULES = [
 
   // ── FACILITIES ──
   { id:'library',       label:'Library',            icon:'<i class="fa-solid fa-book-open"></i>', roles:['admin','teacher','student'] },
-  { id:'transport',     label:'Transport',          icon:'<i class="fa-solid fa-bus-school"></i>', roles:['admin','student','parent'] },
+  { id:'transport',     label:'Transport',          icon:'<i class="fa-solid fa-bus"></i>', roles:['admin','student','parent'] },
   { id:'canteen',       label:'Canteen',            icon:'<i class="fa-solid fa-utensils"></i>', roles:['admin','accountant','student','parent'] },
   { id:'inventory',     label:'Inventory',          icon:'<i class="fa-solid fa-boxes-stacked"></i>', roles:['admin','trustee'] },
 
@@ -5833,7 +5833,11 @@ function renderReports() {
   ${['admin','trustee','accountant'].includes(r) ? `
   <div class="tab-pane" id="rep-finance">
     <div class="card-title" style="margin-bottom:14px"><i class="fa-solid fa-sack-dollar"></i> Income vs Expense Summary</div>
-    ${renderFinanceRows(FINANCE_LEDGER)}
+    <div class="tbl-wrap">
+      <table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>
+      ${renderFinanceRows(FINANCE_LEDGER)}
+      </tbody></table>
+    </div>
   </div>` : ''}
 
   ${['admin','trustee'].includes(r) ? `
