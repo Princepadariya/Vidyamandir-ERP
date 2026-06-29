@@ -1642,6 +1642,7 @@ function showErr(msg) {
 
 function doLogout() {
   CU = null;
+  window._currentClass = null;
   localStorage.removeItem('erp_session_v1');
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -1950,14 +1951,29 @@ function getVisibleStudents() {
 }
 
 function renderStudents() {
+  const r = CU.role;
+  const isClassView = ['admin','trustee'].includes(r);
   const list = getVisibleStudents();
   const classes = [...new Set(STUDENTS.map(s => s.cls))].sort();
 
+  // Class-wise view for Admin / Trustee
+  if (isClassView && !window._currentClass) {
+    return renderStudentsClassGrid(classes);
+  }
+
+  // Drill-down: show students of selected class (or full list for non-admin)
+  const filteredList = window._currentClass ? STUDENTS.filter(s => s.cls === window._currentClass) : list;
+
   return `
   <div class="page-header">
-    <div class="page-title"><i class="fa-solid fa-user-graduate"></i> Student Management</div>
-    <div class="page-sub">${list.length} student(s) visible to your role</div>
+    <div class="page-title"><i class="fa-solid fa-user-graduate"></i> ${window._currentClass ? `Class ${window._currentClass} — Students` : 'Student Management'}</div>
+    <div class="page-sub">${filteredList.length} student(s) ${window._currentClass ? `in Class ${window._currentClass}` : 'visible to your role'}</div>
   </div>
+
+  ${window._currentClass ? `
+  <div style="margin-bottom:16px">
+    <button class="btn btn-secondary btn-sm" onclick="exitClassView()"><i class="fa-solid fa-arrow-left"></i> Back to All Classes</button>
+  </div>` : ''}
 
   <div class="tabs">
     <div class="tab active" onclick="switchTab(this,'st-list')">All Students</div>
@@ -1969,7 +1985,7 @@ function renderStudents() {
     <div class="action-bar">
       <div class="action-bar-left">
         <input class="search-box" placeholder="Search by name, class, roll..." id="std-search" oninput="filterStudentTable()">
-        ${CAN.viewAllStudents() ? `
+        ${CAN.viewAllStudents() && !window._currentClass ? `
         <select class="filter-sel" id="std-cls-filter" onchange="filterStudentTable()">
           <option value="">All Classes</option>
           ${classes.map(c => `<option value="${c}">Class ${c}</option>`).join('')}
@@ -1981,7 +1997,7 @@ function renderStudents() {
         </select>` : ''}
       </div>
       <div style="display:flex;gap:8px">
-        ${CAN.addStudent() ? `<button class="btn btn-primary" onclick="openAddStudent()">+ Add Student</button>` : ''}
+        ${CAN.addStudent() ? `<button class="btn btn-primary" onclick="openAddStudent()"><i class="fa-solid fa-plus"></i> Add Student</button>` : ''}
       </div>
     </div>
 
@@ -1989,27 +2005,122 @@ function renderStudents() {
       <table id="std-table">
         <thead>
           <tr>
-            <th></th>
-            <th>Name</th>
-            <th>Class</th>
-            <th>Roll</th>
-            <th>Blood</th>
-            <th>Father</th>
-            <th>Phone</th>
-            <th>Fee</th>
-            <th>Attendance</th>
-            <th>Bus</th>
-            <th>Actions</th>
+            <th></th><th>Name</th><th>Class</th><th>Roll</th><th>Blood</th>
+            <th>Father</th><th>Phone</th><th>Fee</th><th>Attendance</th><th>Bus</th><th>Actions</th>
           </tr>
         </thead>
         <tbody id="std-tbody">
-          ${renderStudentRows(list)}
+          ${renderStudentRows(filteredList)}
         </tbody>
       </table>
     </div>
+  </div>` + renderPromotionTab();
+}
+
+// ── NEW: Class-grid view for Admin / Trustee ──
+function renderStudentsClassGrid(classes) {
+  const totalStudents = STUDENTS.length;
+  const totalDues = STUDENTS.filter(s => s.feeStatus === 'Due').length;
+  const avgAtt = Math.round(STUDENTS.reduce((a, s) => a + (s.attendance || 0), 0) / totalStudents);
+
+  return `
+  <div class="page-header">
+    <div class="page-title"><i class="fa-solid fa-user-graduate"></i> Student Management</div>
+    <div class="page-sub">${totalStudents} students across ${classes.length} classes — select a class to view details</div>
   </div>
 
-  ${CAN.addStudent() ? `
+  <!-- Top summary KPIs -->
+  <div class="kpi-grid" style="margin-bottom:20px">
+    <div class="kpi-card">
+      <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-users"></i></span></div>
+      <div class="kpi-value">${totalStudents}</div>
+      <div class="kpi-label">Total Students</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-school"></i></span></div>
+      <div class="kpi-value">${classes.length}</div>
+      <div class="kpi-label">Active Classes</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-circle-check"></i></span></div>
+      <div class="kpi-value" style="color:${avgAtt >= 75 ? 'var(--green)' : 'var(--red)'}">${avgAtt}%</div>
+      <div class="kpi-label">Avg Attendance</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span class="kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></span></div>
+      <div class="kpi-value" style="color:var(--red)">${totalDues}</div>
+      <div class="kpi-label">Fee Defaulters</div>
+    </div>
+  </div>
+
+  <div class="action-bar">
+    <div class="action-bar-left">
+      <input class="search-box" placeholder="Search class (e.g. 8-A)..." id="cls-search" oninput="filterClassCards()">
+    </div>
+    ${CAN.addStudent() ? `<button class="btn btn-primary" onclick="openAddStudent()"><i class="fa-solid fa-plus"></i> Add Student</button>` : ''}
+  </div>
+
+  <!-- Class cards grid -->
+  <div class="grid-3" id="cls-grid" style="gap:16px">
+    ${classes.map(cls => {
+      const students = STUDENTS.filter(s => s.cls === cls);
+      const cnt = students.length;
+      const avgClsAtt = Math.round(students.reduce((a, s) => a + (s.attendance || 0), 0) / cnt);
+      const dues = students.filter(s => s.feeStatus === 'Due').length;
+      const teacher = STAFF.find(t => t.cls === cls);
+      return `
+      <div class="card class-card" data-cls="${cls}" onclick="enterClassView('${cls}')" style="cursor:pointer;transition:all .15s;position:relative;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+          <div>
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px;font-weight:600">Class</div>
+            <div style="font-size:28px;font-weight:700;color:var(--primary);letter-spacing:-0.02em">${cls}</div>
+          </div>
+          <span class="badge badge-blue" style="font-size:10px">${cnt} students</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
+          <i class="fa-solid fa-chalkboard-user"></i> ${teacher ? teacher.name : 'Not assigned'}
+        </div>
+        <div class="progress-wrap" style="margin-bottom:8px">
+          <div class="progress-meta" style="margin-bottom:4px">
+            <span class="progress-name" style="font-size:11px">Attendance</span>
+            <span class="progress-val" style="font-size:11px;font-weight:600;color:${avgClsAtt >= 75 ? 'var(--green)' : 'var(--red)'}">${avgClsAtt}%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill ${avgClsAtt >= 85 ? 'green' : avgClsAtt >= 70 ? '' : 'red'}" style="width:${avgClsAtt}%"></div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;padding-top:8px;border-top:1px solid var(--border)">
+          <span style="color:var(--green)"><i class="fa-solid fa-circle-check"></i> ${cnt - dues} Paid</span>
+          <span style="color:${dues > 0 ? 'var(--red)' : 'var(--text2)'}"><i class="fa-solid fa-triangle-exclamation"></i> ${dues} Due</span>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <style>
+    .class-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--primary-100); }
+  </style>`;
+}
+
+// ── helpers ──
+function enterClassView(cls) {
+  window._currentClass = cls;
+  navTo('students');
+}
+
+function exitClassView() {
+  window._currentClass = null;
+  navTo('students');
+}
+
+function filterClassCards() {
+  const q = document.getElementById('cls-search')?.value.toLowerCase() || '';
+  document.querySelectorAll('#cls-grid .class-card').forEach(card => {
+    card.style.display = card.dataset.cls.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function renderPromotionTab() {
+  if (!CAN.addStudent()) return '';
+  return `
   <!-- PROMOTION TAB -->
   <div class="tab-pane" id="st-promote">
     <div class="card mb-16">
@@ -2035,8 +2146,7 @@ function renderStudents() {
         <button class="btn btn-primary" onclick="generateTC()"><i class="fa-solid fa-file-lines"></i> Generate TC</button>
       </div>
     </div>
-  </div>` : ''}
-  `;
+  </div>`;
 }
 
 function renderStudentRows(list) {
@@ -3869,12 +3979,58 @@ function renderFees() {
   <!-- DEFAULTERS TAB -->
   <div class="tab-pane" id="fee-defaulters">
     <div class="card-title" style="margin-bottom:14px"><i class="fa-solid fa-triangle-exclamation"></i> Fee Defaulters — June 2026</div>
+    ${(() => {
+      const defaulters = FEE_RECORDS.filter(f => f.status === 'Due');
+      if (!defaulters.length) return '';
+      // Group by class
+      const byClass = {};
+      defaulters.forEach(f => {
+        const s = STUDENTS.find(x => x.id === f.studentId);
+        if (!s) return;
+        if (!byClass[s.cls]) byClass[s.cls] = { count: 0, total: 0 };
+        byClass[s.cls].count++;
+        byClass[s.cls].total += f.total;
+      });
+      const totalDue = defaulters.reduce((a,b) => a + b.total, 0);
+      const sortedClasses = Object.entries(byClass).sort((a,b) => b[1].total - a[1].total);
+      return `
+      <div class="card mb-20" style="background:linear-gradient(135deg,#FEF2F2 0%,#FFF 100%);border-color:#FECACA">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:11px;color:var(--red);font-weight:700;text-transform:uppercase;letter-spacing:0.6px">Total Outstanding Dues</div>
+            <div style="font-size:24px;font-weight:700;color:var(--red);margin-top:4px">₹${totalDue.toLocaleString('en-IN')}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">${defaulters.length} students across ${sortedClasses.length} classes</div>
+          </div>
+        </div>
+        <div class="card-title" style="margin-bottom:12px;font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px">Class-wise Breakdown · Click a class to filter</div>
+        <div class="grid-3" style="gap:10px">
+          ${sortedClasses.map(([cls, info]) => `
+            <div onclick="filterDefaultersByClass('${cls}')" style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--red)';this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform='';this.style.boxShadow=''">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <strong style="font-size:14px">Class ${cls}</strong>
+                <span class="badge badge-red" style="font-size:10px">${info.count} due</span>
+              </div>
+              <div style="font-size:16px;font-weight:700;color:var(--red)">₹${info.total.toLocaleString('en-IN')}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    })()}
+    <div class="action-bar">
+      <div class="action-bar-left">
+        <input class="search-box" placeholder="Search defaulters by name..." id="def-search" oninput="filterDefaulters()">
+        <select class="filter-sel" id="def-cls-filter" onchange="filterDefaulters()">
+          <option value="">All Classes</option>
+          ${[...new Set(STUDENTS.map(s => s.cls))].sort().map(c => `<option value="${c}">Class ${c}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="sendBulkReminder()"><i class="fa-solid fa-bell"></i> Send Reminder to All</button>
+    </div>
     <div class="tbl-wrap">
-      <table><thead><tr><th>Student</th><th>Class</th><th>Amount Due</th><th>Month</th><th>Action</th></tr></thead><tbody>
+      <table><thead><tr><th>Student</th><th>Class</th><th>Amount Due</th><th>Month</th><th>Action</th></tr></thead><tbody id="def-tbody">
       ${FEE_RECORDS.filter(f => f.status === 'Due').map(f => {
         const s = STUDENTS.find(x => x.id === f.studentId);
-        return `<tr><td><strong>${s?.name}</strong></td><td>${s?.cls}</td><td style="color:var(--red)"><strong>₹${f.total.toLocaleString('en-IN')}</strong></td><td>${f.month}</td>
-        <td><button class="btn btn-secondary btn-sm" onclick="sendFeeReminder('${s?.name}')">📱 Send Reminder</button></td></tr>`;
+        return `<tr data-name="${s?.name.toLowerCase()}" data-cls="${s?.cls}"><td><strong>${s?.name}</strong></td><td>${s?.cls}</td><td style="color:var(--red)"><strong>₹${f.total.toLocaleString('en-IN')}</strong></td><td>${f.month}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="sendFeeReminder('${s?.name}')"><i class="fa-brands fa-whatsapp"></i> Remind</button></td></tr>`;
       }).join('') || `<tr><td colspan="5"><div class="empty-state"><div class="es-icon"><i class="fa-solid fa-circle-check"></i></div><div class="es-title">No defaulters!</div></div></td></tr>`}
       </tbody></table>
     </div>
@@ -3990,6 +4146,31 @@ function showFeeReceipt(fee) {
 function sendFeeReminder(name) {
   ALERT_LOG.unshift({ time: new Date().toLocaleString('en-IN'), text: `Fee due reminder — ${name}`, to: 'Parent', status: 'Sent' });
   showToast(`WhatsApp reminder sent to ${name}'s parent!`, '📱');
+}
+
+function filterDefaulters() {
+  const q = (document.getElementById('def-search')?.value || '').toLowerCase();
+  const cls = document.getElementById('def-cls-filter')?.value || '';
+  document.querySelectorAll('#def-tbody tr[data-name]').forEach(row => {
+    const matchName = row.dataset.name.includes(q);
+    const matchCls  = !cls || row.dataset.cls === cls;
+    row.style.display = (matchName && matchCls) ? '' : 'none';
+  });
+}
+
+function filterDefaultersByClass(cls) {
+  const sel = document.getElementById('def-cls-filter');
+  if (sel) sel.value = cls;
+  filterDefaulters();
+  // Scroll to the defaulter table
+  document.getElementById('def-tbody')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function sendBulkReminder() {
+  const count = FEE_RECORDS.filter(f => f.status === 'Due').length;
+  if (!count) { showToast('No defaulters to remind!', '✅'); return; }
+  ALERT_LOG.unshift({ time: new Date().toLocaleString('en-IN'), text: `Bulk fee reminder sent to ${count} parents`, to: 'All Defaulters', status: 'Sent' });
+  showToast(`WhatsApp reminders sent to ${count} parents!`, '📱');
 }
 
 function openEditFeeStruct(idx) {
